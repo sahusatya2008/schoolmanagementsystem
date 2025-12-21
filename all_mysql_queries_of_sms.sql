@@ -1,7 +1,7 @@
--- COMPLETE MYSQL QUERIES FOR SCHOOL MANAGEMENT SYSTEM
+-- COMPLETE MYSQL QUERIES FOR SMS BY SATYA NARAYAN SAHU CLASS 12th
 -- This file contains ALL SQL statements used throughout the application
 -- Organized by functionality for reference
-
+-- Its strictly prohibited to use anything from this code, you can review this code, contribute your ideas to it but can't use it without permission.
 -- =====================================================================================
 -- DATABASE SETUP AND TABLE CREATION
 -- =====================================================================================
