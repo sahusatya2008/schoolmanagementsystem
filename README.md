@@ -1,6 +1,6 @@
 # School Management System v1 by SNS
 
-A comprehensive school management system built with Python and MySQL designed by #Satya Narayan Sahu# of class 12th, and legally owns this software contents and the entire program. It is stricly prohibited to take anything from this content, if neended feel free to seek help from the author, on credits definately help will be given as per demanded. 
+A comprehensive school management system built with Python and MySQL designed by Satya Narayan Sahu of class 12th, and legally owns this software contents and the entire program. It is stricly prohibited to take anything from this content, if neended feel free to seek help from the author, on credits definately help will be given as per demanded. 
 
 ## Prerequisites
 
