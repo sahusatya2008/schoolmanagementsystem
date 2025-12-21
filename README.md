@@ -1,6 +1,6 @@
 # School Management System
 
-A comprehensive school management system built with Python and MySQL.
+A comprehensive school management system built with Python and MySQL designed by Satya Narayan Sahu of class 12th, and legally owns this software contents and the entire program. It is stricly prohibited to take anything from this content, if neended feel free to seek help from the author, on credits definately help will be given as per demanded. 
 
 ## Prerequisites
 
@@ -330,6 +330,7 @@ COMMIT;
 ## Security Notes
 
 - Default passwords should be changed in production
+- This software programs are owned by Satya Narayan Sahu, anything taken from this should be credited to the author.
 - Consider using environment variables for database credentials
 - The system uses SHA256 password hashing
 - All database queries use parameterized statements to prevent SQL injection
