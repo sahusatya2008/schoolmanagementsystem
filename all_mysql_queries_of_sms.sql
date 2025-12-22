@@ -1,7 +1,7 @@
--- COMPLETE MYSQL QUERIES FOR SMS BY SATYA NARAYAN SAHU CLASS 12th
+-- COMPLETE MYSQL QUERIES FOR SCHOOL MANAGEMENT SYSTEM
 -- This file contains ALL SQL statements used throughout the application
 -- Organized by functionality for reference
--- Its strictly prohibited to use anything from this code, you can review this code, contribute your ideas to it but can't use it without permission.
+
 -- =====================================================================================
 -- DATABASE SETUP AND TABLE CREATION
 -- =====================================================================================
@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS teacher_privileges (
     can_suspend_students BOOLEAN DEFAULT FALSE,
     can_edit_subjects BOOLEAN DEFAULT FALSE,
     can_delete_subjects BOOLEAN DEFAULT FALSE,
+    can_edit_attendance BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
 );
 
@@ -182,6 +183,23 @@ CREATE TABLE IF NOT EXISTS teacher_assignments (
     FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE KEY unique_teacher_class_subject (teacher_id, class_id, subject_id)
 );
+
+-- =====================================================================================
+-- DATABASE MIGRATIONS AND FIXES
+-- =====================================================================================
+
+-- DATABASE UPDATE SCRIPT (also available as update_database.sql)
+-- Run this to fix existing databases with missing columns
+
+USE school_management;
+
+-- Fix missing can_edit_attendance column in teacher_privileges table
+-- Run this if you get "Unknown column 'tp.can_edit_attendance'" error
+ALTER TABLE teacher_privileges ADD COLUMN can_edit_attendance BOOLEAN DEFAULT FALSE;
+
+-- Verify the fix worked
+SELECT 'Database update completed successfully!' as status;
+DESCRIBE teacher_privileges;
 
 -- =====================================================================================
 -- DATABASE MIGRATIONS
