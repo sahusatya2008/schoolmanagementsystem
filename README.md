@@ -3,7 +3,6 @@
 A comprehensive school management system built with Python and MySQL designed by Satya Narayan Sahu of class 12th, and legally owns this software contents and the entire program. It is stricly prohibited to take anything from this content, if neended feel free to seek help from the author, on credits definately help will be given as per demanded. 
 
 ## Complete Documentation
-
 ---
 
 ## IMMEDIATE FIX: "Unknown column 'tp.can_edit_attendance'" Error
@@ -310,10 +309,6 @@ CREATE TABLE teacher_privileges (
 |------|---------|------|
 | `studentmanage.py` | Main application | ~4.6MB |
 | `setup_database.sql` | Complete database schema | ~3KB |
-| `update_database.sql` | Schema update script | ~1KB |
-| `fast_mysql_setup.sh` | Optimized setup script | ~1KB |
-| `mysql_force_reset.sh` | Emergency reset tool | ~2KB |
-| `diagnose_database.sh` | Health check tool | ~2KB |
 | `complete_mysql_queries.sql` | All SQL queries reference | ~15KB |
 | `README.md` | This documentation | ~8KB |
 | `.gitignore` | Version control | ~100B |
