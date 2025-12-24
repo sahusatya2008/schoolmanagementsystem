@@ -225,6 +225,15 @@ SELECT * FROM users WHERE username = %s AND password = %s;
 -- Check teacher suspension status
 SELECT status, suspension_reason FROM teacher_status WHERE teacher_id = (SELECT id FROM teachers WHERE user_id = %s);
 
+-- Check username uniqueness (for new user creation)
+SELECT id FROM users WHERE username = %s;
+
+-- Check username uniqueness excluding current user (for updates)
+SELECT id FROM users WHERE username = %s AND id != %s;
+
+-- Get current user info for credential changes
+SELECT username FROM users WHERE id = %s;
+
 -- =====================================================================================
 -- DEFAULT DATA INSERTION
 -- =====================================================================================
@@ -382,6 +391,9 @@ SELECT s.*, c.class_name, c.section FROM students s JOIN classes c ON s.class_id
 
 -- View teacher profile
 SELECT t.*, u.username, COUNT(tr.id) as record_count, tp.* FROM teachers t JOIN users u ON t.user_id = u.id LEFT JOIN teaching_records tr ON t.id = tr.teacher_id LEFT JOIN teacher_privileges tp ON t.id = tp.teacher_id WHERE t.user_id = %s GROUP BY t.id;
+
+-- Get current user info for credential changes
+SELECT username FROM users WHERE id = %s;
 
 -- View teacher assigned classes
 SELECT DISTINCT c.class_name, c.section, COUNT(DISTINCT s.id) as student_count, COUNT(DISTINCT sub.id) as subject_count FROM teacher_assignments ta JOIN classes c ON ta.class_id = c.id LEFT JOIN students s ON c.id = s.class_id LEFT JOIN student_status ss ON s.id = ss.student_id AND ss.status = 'removed' LEFT JOIN subjects sub ON ta.subject_id = sub.id WHERE ta.teacher_id = (SELECT id FROM teachers WHERE user_id = %s) AND ss.id IS NULL GROUP BY c.class_name, c.section ORDER BY c.class_name, c.section;
