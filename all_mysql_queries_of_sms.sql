@@ -234,6 +234,15 @@ SELECT id FROM users WHERE username = %s AND id != %s;
 -- Get current user info for credential changes
 SELECT username FROM users WHERE id = %s;
 
+-- Check username uniqueness (for new user creation)
+SELECT id FROM users WHERE username = %s;
+
+-- Check username uniqueness excluding current user (for updates)
+SELECT id FROM users WHERE username = %s AND id != %s;
+
+-- Get current user info for credential changes
+SELECT username FROM users WHERE id = %s;
+
 -- =====================================================================================
 -- DEFAULT DATA INSERTION
 -- =====================================================================================
