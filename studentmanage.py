@@ -352,14 +352,15 @@ class SchoolManagementSystem:
             print("15. Manage Teacher Status")
             print("16. Manage Subjects")
             print("17. Edit Student Class Assignment")
-            print("18. Database Maintenance")
-            print("19. View Student Attendance History")
-            print("20. Create Principal")
-            print("21. Create Academic Coordinator")
-            print("22. Create Admission Department User")
-            print("23. Logout")
+            print("18. Edit User Details")
+            print("19. Database Maintenance")
+            print("20. View Student Attendance History")
+            print("21. Create Principal")
+            print("22. Create Academic Coordinator")
+            print("23. Create Admission Department User")
+            print("24. Logout")
 
-            choice = input("\nEnter your choice (1-23): ").strip()
+            choice = input("\nEnter your choice (1-24): ").strip()
 
             if choice == '1':
                 self.create_teacher()
@@ -396,16 +397,18 @@ class SchoolManagementSystem:
             elif choice == '17':
                 self.edit_student_class_assignment()
             elif choice == '18':
-                self.database_maintenance()
+                self.edit_user_details()
             elif choice == '19':
-                self.view_student_attendance_history()
+                self.database_maintenance()
             elif choice == '20':
-                self.create_principal()
+                self.view_student_attendance_history()
             elif choice == '21':
-                self.create_academic_coordinator()
+                self.create_principal()
             elif choice == '22':
-                self.create_admission_department()
+                self.create_academic_coordinator()
             elif choice == '23':
+                self.create_admission_department()
+            elif choice == '24':
                 self.logout()
                 break
             else:
@@ -423,16 +426,44 @@ class SchoolManagementSystem:
                 print("Name is required!")
                 return
 
-            age = int(input("Age: "))
-            dob = input("Date of Birth (YYYY-MM-DD): ").strip()
+            # Get date of birth and calculate age
+            while True:
+                dob_input = input("Date of Birth (YYYY-MM-DD): ").strip()
+                try:
+                    dob = datetime.strptime(dob_input, '%Y-%m-%d').date()
+                    today = date.today()
+                    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    break
+                except ValueError:
+                    print("Invalid date format! Please enter in YYYY-MM-DD format.")
+
             qualifications = input("Highest Qualifications: ").strip()
             subject = input("Teaching Subject: ").strip()
+
+            # Get username and password from admin
+            while True:
+                username = input("Username: ").strip()
+                if not username:
+                    print("Username is required!")
+                    continue
+                # Check if username already exists
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                if cursor.fetchone():
+                    print("Username already exists! Please choose a different username.")
+                    cursor.close()
+                    continue
+                cursor.close()
+                break
+
+            password = input("Password: ").strip()
+            if not password:
+                print("Password is required!")
+                return
 
             cursor = self.connection.cursor()
 
             # Create user account
-            username = name.lower().replace(' ', '.')
-            password = 'teacher123'
             hashed_password = self.hash_password(password)
 
             user_query = "INSERT INTO users (username, password, role) VALUES (%s, %s, 'teacher')"
@@ -469,10 +500,9 @@ class SchoolManagementSystem:
             print(f"\nTeacher created successfully!")
             print(f"Username: {username}")
             print(f"Password: {password}")
+            print(f"Age: {age} (calculated from DOB)")
             print(f"Teaching records added: {record_count}")
 
-        except ValueError:
-            print("Invalid age! Please enter a number.")
         except pymysql.Error as err:
             print(f"Database error: {err}")
             self.connection.rollback()
@@ -491,16 +521,44 @@ class SchoolManagementSystem:
                 print("Name is required!")
                 return
 
-            age = int(input("Age: "))
-            dob = input("Date of Birth (YYYY-MM-DD): ").strip()
+            # Get date of birth and calculate age
+            while True:
+                dob_input = input("Date of Birth (YYYY-MM-DD): ").strip()
+                try:
+                    dob = datetime.strptime(dob_input, '%Y-%m-%d').date()
+                    today = date.today()
+                    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    break
+                except ValueError:
+                    print("Invalid date format! Please enter in YYYY-MM-DD format.")
+
             qualifications = input("Highest Qualifications: ").strip()
             experience = input("Years of Experience: ").strip()
+
+            # Get username and password from admin
+            while True:
+                username = input("Username: ").strip()
+                if not username:
+                    print("Username is required!")
+                    continue
+                # Check if username already exists
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                if cursor.fetchone():
+                    print("Username already exists! Please choose a different username.")
+                    cursor.close()
+                    continue
+                cursor.close()
+                break
+
+            password = input("Password: ").strip()
+            if not password:
+                print("Password is required!")
+                return
 
             cursor = self.connection.cursor()
 
             # Create user account
-            username = name.lower().replace(' ', '.')
-            password = 'principal123'
             hashed_password = self.hash_password(password)
 
             user_query = "INSERT INTO users (username, password, role) VALUES (%s, %s, 'principal')"
@@ -518,9 +576,8 @@ class SchoolManagementSystem:
             print(f"\nPrincipal created successfully!")
             print(f"Username: {username}")
             print(f"Password: {password}")
+            print(f"Age: {age} (calculated from DOB)")
 
-        except ValueError:
-            print("Invalid age! Please enter a number.")
         except pymysql.Error as err:
             print(f"Database error: {err}")
             self.connection.rollback()
@@ -539,16 +596,44 @@ class SchoolManagementSystem:
                 print("Name is required!")
                 return
 
-            age = int(input("Age: "))
-            dob = input("Date of Birth (YYYY-MM-DD): ").strip()
+            # Get date of birth and calculate age
+            while True:
+                dob_input = input("Date of Birth (YYYY-MM-DD): ").strip()
+                try:
+                    dob = datetime.strptime(dob_input, '%Y-%m-%d').date()
+                    today = date.today()
+                    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    break
+                except ValueError:
+                    print("Invalid date format! Please enter in YYYY-MM-DD format.")
+
             qualifications = input("Highest Qualifications: ").strip()
             department = input("Department/Specialization: ").strip()
+
+            # Get username and password from admin
+            while True:
+                username = input("Username: ").strip()
+                if not username:
+                    print("Username is required!")
+                    continue
+                # Check if username already exists
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                if cursor.fetchone():
+                    print("Username already exists! Please choose a different username.")
+                    cursor.close()
+                    continue
+                cursor.close()
+                break
+
+            password = input("Password: ").strip()
+            if not password:
+                print("Password is required!")
+                return
 
             cursor = self.connection.cursor()
 
             # Create user account
-            username = name.lower().replace(' ', '.')
-            password = 'coordinator123'
             hashed_password = self.hash_password(password)
 
             user_query = "INSERT INTO users (username, password, role) VALUES (%s, %s, 'academic_coordinator')"
@@ -566,9 +651,8 @@ class SchoolManagementSystem:
             print(f"\nAcademic Coordinator created successfully!")
             print(f"Username: {username}")
             print(f"Password: {password}")
+            print(f"Age: {age} (calculated from DOB)")
 
-        except ValueError:
-            print("Invalid age! Please enter a number.")
         except pymysql.Error as err:
             print(f"Database error: {err}")
             self.connection.rollback()
@@ -587,16 +671,44 @@ class SchoolManagementSystem:
                 print("Name is required!")
                 return
 
-            age = int(input("Age: "))
-            dob = input("Date of Birth (YYYY-MM-DD): ").strip()
+            # Get date of birth and calculate age
+            while True:
+                dob_input = input("Date of Birth (YYYY-MM-DD): ").strip()
+                try:
+                    dob = datetime.strptime(dob_input, '%Y-%m-%d').date()
+                    today = date.today()
+                    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    break
+                except ValueError:
+                    print("Invalid date format! Please enter in YYYY-MM-DD format.")
+
             qualifications = input("Highest Qualifications: ").strip()
             role_description = input("Role Description: ").strip()
+
+            # Get username and password from admin
+            while True:
+                username = input("Username: ").strip()
+                if not username:
+                    print("Username is required!")
+                    continue
+                # Check if username already exists
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                if cursor.fetchone():
+                    print("Username already exists! Please choose a different username.")
+                    cursor.close()
+                    continue
+                cursor.close()
+                break
+
+            password = input("Password: ").strip()
+            if not password:
+                print("Password is required!")
+                return
 
             cursor = self.connection.cursor()
 
             # Create user account
-            username = name.lower().replace(' ', '.')
-            password = 'admission123'
             hashed_password = self.hash_password(password)
 
             user_query = "INSERT INTO users (username, password, role) VALUES (%s, %s, 'admission_department')"
@@ -614,9 +726,8 @@ class SchoolManagementSystem:
             print(f"\nAdmission Department User created successfully!")
             print(f"Username: {username}")
             print(f"Password: {password}")
+            print(f"Age: {age} (calculated from DOB)")
 
-        except ValueError:
-            print("Invalid age! Please enter a number.")
         except pymysql.Error as err:
             print(f"Database error: {err}")
             self.connection.rollback()
@@ -739,8 +850,21 @@ class SchoolManagementSystem:
                 return
 
             name = input("Full Name: ").strip()
-            age = int(input("Age: "))
-            dob = input("Date of Birth (YYYY-MM-DD): ").strip()
+            if not name:
+                print("Name is required!")
+                return
+
+            # Get date of birth and calculate age
+            while True:
+                dob_input = input("Date of Birth (YYYY-MM-DD): ").strip()
+                try:
+                    dob = datetime.strptime(dob_input, '%Y-%m-%d').date()
+                    today = date.today()
+                    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    break
+                except ValueError:
+                    print("Invalid date format! Please enter in YYYY-MM-DD format.")
+
             previous_school = input("Previous School: ").strip()
 
             # Show available class names first
@@ -794,9 +918,25 @@ class SchoolManagementSystem:
             contact = input("Contact Number: ").strip()
             emergency_contact = input("Emergency Contact: ").strip()
 
+            # Get username and password from admin
+            while True:
+                username = input("Username: ").strip()
+                if not username:
+                    print("Username is required!")
+                    continue
+                # Check if username already exists
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                if cursor.fetchone():
+                    print("Username already exists! Please choose a different username.")
+                    continue
+                break
+
+            password = input("Password: ").strip()
+            if not password:
+                print("Password is required!")
+                return
+
             # Create user account
-            username = name.lower().replace(' ', '.')
-            password = 'student123'
             hashed_password = self.hash_password(password)
 
             user_query = "INSERT INTO users (username, password, role) VALUES (%s, %s, 'student')"
@@ -831,11 +971,10 @@ class SchoolManagementSystem:
             print(f"\n✓ Student created successfully!")
             print(f"Username: {username}")
             print(f"Password: {password}")
+            print(f"Age: {age} (calculated from DOB)")
             print(f"Assigned to: {class_info['class_name']} - Section {class_info['section']}")
             print(f"Auto-assigned subjects: {len(subjects) if subjects else 0}")
 
-        except ValueError:
-            print("Invalid input! Please enter numbers where required.")
         except pymysql.IntegrityError:
             print("Admission number already exists!")
         except pymysql.Error as err:
@@ -1238,13 +1377,14 @@ class SchoolManagementSystem:
             print("3. View My Attendance")
             print("4. View My Students")
             print("5. View My Profile")
-            print("6. Manage Student Status")
-            print("7. View My Assigned Classes")
-            print("8. View Student Attendance History")
-            print("9. Edit Student Attendance")
-            print("10. Logout")
+            print("6. Change Username & Password")
+            print("7. Manage Student Status")
+            print("8. View My Assigned Classes")
+            print("9. View Student Attendance History")
+            print("10. Edit Student Attendance")
+            print("11. Logout")
 
-            choice = input("\nEnter your choice (1-10): ").strip()
+            choice = input("\nEnter your choice (1-11): ").strip()
 
             if choice == '1':
                 self.mark_student_attendance()
@@ -1257,14 +1397,16 @@ class SchoolManagementSystem:
             elif choice == '5':
                 self.view_teacher_profile()
             elif choice == '6':
-                self.teacher_manage_student_status()
+                self.change_teacher_credentials()
             elif choice == '7':
-                self.view_teacher_assigned_classes()
+                self.teacher_manage_student_status()
             elif choice == '8':
-                self.view_student_attendance_history()
+                self.view_teacher_assigned_classes()
             elif choice == '9':
-                self.edit_student_attendance()
+                self.view_student_attendance_history()
             elif choice == '10':
+                self.edit_student_attendance()
+            elif choice == '11':
                 self.logout()
                 break
             else:
@@ -1572,10 +1714,11 @@ class SchoolManagementSystem:
             print("2. View My Attendance")
             print("3. View My Subjects")
             print("4. View My Profile")
-            print("5. View Attendance History")
-            print("6. Logout")
+            print("5. Change Username & Password")
+            print("6. View Attendance History")
+            print("7. Logout")
 
-            choice = input("\nEnter your choice (1-6): ").strip()
+            choice = input("\nEnter your choice (1-7): ").strip()
 
             if choice == '1':
                 self.view_student_timetable()
@@ -1586,6 +1729,8 @@ class SchoolManagementSystem:
             elif choice == '4':
                 self.view_student_profile()
             elif choice == '5':
+                self.change_student_credentials()
+            elif choice == '6':
                 # For students, show their own attendance history
                 cursor = self.connection.cursor(pymysql.cursors.DictCursor)
                 try:
@@ -1634,7 +1779,7 @@ class SchoolManagementSystem:
                     print(f"Database error: {err}")
                 finally:
                     cursor.close()
-            elif choice == '6':
+            elif choice == '7':
                 self.logout()
                 break
             else:
@@ -3721,7 +3866,6 @@ class SchoolManagementSystem:
             print(f"  Can Edit Subjects: {'Yes' if teacher.get('can_edit_subjects') else 'No'}")
             print(f"  Can Delete Subjects: {'Yes' if teacher.get('can_delete_subjects') else 'No'}")
             print(f"  Can Edit Attendance: {'Yes' if teacher.get('can_edit_attendance') else 'No'}")
-            print(f"  Can Edit Attendance: {'Yes' if teacher.get('can_edit_attendance') else 'No'}")
 
             print(f"\nDate of Birth: {teacher['dob']}")
             print(f"Created: {teacher['created_at']}")
@@ -4235,7 +4379,7 @@ class SchoolManagementSystem:
             choice = input("\nEnter your choice (1-5): ").strip()
 
             if choice == '1':
-                self.principal_view_all_subjects()
+                self.view_all_subjects()
             elif choice == '2':
                 self.principal_view_teacher_assignments()
             elif choice == '3':
@@ -4359,7 +4503,7 @@ class SchoolManagementSystem:
     def view_student_profile(self):
         """View student's profile"""
         cursor = self.connection.cursor(pymysql.cursors.DictCursor)
-        
+
         try:
             cursor.execute("""
             SELECT s.*, c.class_name, c.section
@@ -4367,19 +4511,21 @@ class SchoolManagementSystem:
             JOIN classes c ON s.class_id = c.id
             WHERE s.user_id = %s
             """, (self.current_user['id'],))
-            
+
             student = cursor.fetchone()
-            
+
             if not student:
                 print("Student profile not found!")
                 return
-            
+
             print("\n" + "="*50)
             print("            YOUR PROFILE")
             print("="*50)
-            
+
             print(f"Admission Number: {student['admission_number']}")
             print(f"Name: {student['name']}")
+            print(f"Username: {self.current_user['username']}")
+            print(f"Password: [HIDDEN] (use option 5 to change)")
             print(f"Age: {student['age']}")
             print(f"Date of Birth: {student['dob']}")
             print(f"Class: {student['class_name']}-{student['section']}")
@@ -4389,9 +4535,69 @@ class SchoolManagementSystem:
             print(f"  Mother: {student['mother_name']} ({student['mother_occupation']})")
             print(f"  Contact: {student['contact_number']}")
             print(f"  Emergency Contact: {student['emergency_contact']}")
-            
+
         except pymysql.Error as err:
             print(f"Database error: {err}")
+        finally:
+            cursor.close()
+
+    def change_student_credentials(self):
+        """Student: Change username and password"""
+        print("\n" + "="*50)
+        print("        CHANGE USERNAME & PASSWORD")
+        print("="*50)
+
+        cursor = self.connection.cursor()
+
+        try:
+            print("Note: Name cannot be changed. Only admin can change names.")
+            print("Leave fields empty to keep current values.")
+
+            # Change username
+            current_username = None
+            cursor.execute("SELECT username FROM users WHERE id = %s", (self.current_user['id'],))
+            result = cursor.fetchone()
+            if result:
+                current_username = result[0]
+
+            new_username = input(f"New Username (current: {current_username}): ").strip()
+
+            if new_username and new_username != current_username:
+                # Check if new username already exists
+                cursor.execute("SELECT id FROM users WHERE username = %s AND id != %s", (new_username, self.current_user['id']))
+                if cursor.fetchone():
+                    print("Username already exists! Please choose a different username.")
+                    return
+
+                # Update username
+                cursor.execute("UPDATE users SET username = %s WHERE id = %s", (new_username, self.current_user['id']))
+                self.current_user['username'] = new_username
+                print("✓ Username updated successfully!")
+            elif new_username == current_username:
+                print("Username is the same as current.")
+            else:
+                print("Username not changed.")
+
+            # Change password
+            new_password = input("New Password (leave empty to keep current): ").strip()
+
+            if new_password:
+                confirm_password = input("Confirm New Password: ").strip()
+                if new_password != confirm_password:
+                    print("Passwords do not match!")
+                    return
+
+                hashed_password = self.hash_password(new_password)
+                cursor.execute("UPDATE users SET password = %s WHERE id = %s", (hashed_password, self.current_user['id']))
+                print("✓ Password updated successfully!")
+            else:
+                print("Password not changed.")
+
+            self.connection.commit()
+
+        except pymysql.Error as err:
+            print(f"Database error: {err}")
+            self.connection.rollback()
         finally:
             cursor.close()
     
