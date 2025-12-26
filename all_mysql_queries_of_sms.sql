@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS student_attendance (
     recorded_by INT,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    FOREIGN KEY (recorded_by) REFERENCES teachers(id) ON DELETE CASCADE
+    FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- Teacher attendance table
@@ -598,6 +598,39 @@ SELECT t.name, ta.class_id, c.class_name, c.section, s.subject_name FROM teacher
 
 -- View student status summary
 SELECT c.class_name, c.section, COUNT(s.id) as total_students, SUM(CASE WHEN ss.status IS NULL OR ss.status = 'active' THEN 1 ELSE 0 END) as active_students, SUM(CASE WHEN ss.status = 'suspended' THEN 1 ELSE 0 END) as suspended_students, SUM(CASE WHEN ss.status = 'removed' THEN 1 ELSE 0 END) as removed_students FROM classes c LEFT JOIN students s ON c.id = s.class_id LEFT JOIN student_status ss ON s.id = ss.student_id GROUP BY c.class_name, c.section ORDER BY c.class_name, c.section;
+
+-- =====================================================================================
+-- ADMIN USER MANAGEMENT (NEW QUERIES)
+-- =====================================================================================
+
+-- View all users for admin editing
+SELECT u.id, u.username, u.role, CASE WHEN u.role = 'student' THEN s.name WHEN u.role IN ('teacher', 'principal', 'academic_coordinator', 'admission_department') THEN t.name ELSE 'N/A' END as name FROM users u LEFT JOIN students s ON u.id = s.user_id LEFT JOIN teachers t ON u.id = t.user_id ORDER BY u.role, u.username;
+
+-- Get user details for editing
+SELECT u.username, u.role, CASE WHEN u.role = 'student' THEN s.* WHEN u.role IN ('teacher', 'principal', 'academic_coordinator', 'admission_department') THEN t.* ELSE NULL END as details FROM users u LEFT JOIN students s ON u.id = s.user_id LEFT JOIN teachers t ON u.id = t.user_id WHERE u.id = %s;
+
+-- Update user details (username, password, name, etc.)
+UPDATE users SET username = %s, password = %s WHERE id = %s;
+UPDATE students SET name = %s, age = %s, dob = %s, previous_school = %s, father_name = %s, mother_name = %s, father_occupation = %s, mother_occupation = %s, contact_number = %s, emergency_contact = %s WHERE user_id = %s;
+UPDATE teachers SET name = %s, age = %s, dob = %s, highest_qualifications = %s, teaching_subject = %s WHERE user_id = %s;
+
+-- Get current user info for credential changes (teachers/students)
+SELECT username FROM users WHERE id = %s;
+
+-- =====================================================================================
+-- ADMIN USER MANAGEMENT (NEW QUERIES)
+-- =====================================================================================
+
+-- View all users for admin editing
+SELECT u.id, u.username, u.role, CASE WHEN u.role = 'student' THEN s.name WHEN u.role IN ('teacher', 'principal', 'academic_coordinator', 'admission_department') THEN t.name ELSE 'N/A' END as name FROM users u LEFT JOIN students s ON u.id = s.user_id LEFT JOIN teachers t ON u.id = t.user_id ORDER BY u.role, u.username;
+
+-- Get user details for editing
+SELECT u.username, u.role, CASE WHEN u.role = 'student' THEN s.* WHEN u.role IN ('teacher', 'principal', 'academic_coordinator', 'admission_department') THEN t.* ELSE NULL END as details FROM users u LEFT JOIN students s ON u.id = s.user_id LEFT JOIN teachers t ON u.id = t.user_id WHERE u.id = %s;
+
+-- Update user details (username, password, name, etc.)
+UPDATE users SET username = %s, password = %s WHERE id = %s;
+UPDATE students SET name = %s, age = %s, dob = %s, previous_school = %s, father_name = %s, mother_name = %s, father_occupation = %s, mother_occupation = %s, contact_number = %s, emergency_contact = %s WHERE user_id = %s;
+UPDATE teachers SET name = %s, age = %s, dob = %s, highest_qualifications = %s, teaching_subject = %s WHERE user_id = %s;
 
 -- =====================================================================================
 -- DATABASE MAINTENANCE
