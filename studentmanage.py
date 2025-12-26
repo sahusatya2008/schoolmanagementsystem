@@ -3,9 +3,70 @@ from datetime import datetime, date
 import getpass
 import sys
 import hashlib
+import os
+import logging
+from typing import Optional, Dict, Any
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class DatabaseConfig:
+    """Database configuration class to handle connection settings securely"""
+
+    def __init__(self):
+        self.host = os.getenv('DB_HOST', 'localhost')
+        self.user = os.getenv('DB_USER', 'root')
+        self.password = os.getenv('DB_PASSWORD', '')
+        self.database = os.getenv('DB_NAME', 'school_management')
+        self.port = int(os.getenv('DB_PORT', '3306'))
+        self.charset = 'utf8mb4'
+
+        # If password not set via environment, prompt user
+        if not self.password:
+            print("Database password not found in environment variables.")
+            self.password = getpass.getpass("Enter MySQL password: ")
+
+        # Validate connection
+        if not self._test_connection():
+            print("Failed to connect to database. Please check your credentials.")
+            sys.exit(1)
+
+    def _test_connection(self) -> bool:
+        """Test database connection without selecting a database"""
+        try:
+            connection = pymysql.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                port=self.port,
+                charset=self.charset,
+                connect_timeout=10
+            )
+            connection.close()
+            return True
+        except pymysql.Error as err:
+            logger.error(f"Database connection test failed: {err}")
+            return False
+
+    def get_connection_params(self) -> Dict[str, Any]:
+        """Get connection parameters for pymysql"""
+        return {
+            'host': self.host,
+            'user': self.user,
+            'password': self.password,
+            'database': self.database,
+            'port': self.port,
+            'charset': self.charset,
+            'autocommit': False,
+            'connect_timeout': 10,
+            'read_timeout': 30,
+            'write_timeout': 30
+        }
 
 class SchoolManagementSystem:
     def __init__(self):
+        self.db_config = DatabaseConfig()
         self.connection = None
         self.current_user = None
         self.current_role = None
@@ -13,67 +74,134 @@ class SchoolManagementSystem:
         self.create_tables()
     
     def connect_db(self):
-        """Connect to MySQL database"""
-        try:
-            self.connection = pymysql.connect(
-                host='localhost',
-                user='root',
-                password='root123',
-                database='school_management'
-            )
-            print("Connected to database successfully!")
-        except pymysql.Error as err:
-            print(f"Error connecting to database: {err}")
-            print("Creating database...")
-            self.create_database()
+        """Connect to MySQL database with improved error handling"""
+        max_retries = 3
+        retry_count = 0
+
+        while retry_count < max_retries:
+            try:
+                # First try to connect to the specific database
+                self.connection = pymysql.connect(**self.db_config.get_connection_params())
+                logger.info("Connected to database successfully!")
+                return
+            except pymysql.err.OperationalError as err:
+                error_code = err.args[0]
+                if error_code == 1049:  # Unknown database
+                    logger.warning(f"Database '{self.db_config.database}' does not exist. Attempting to create...")
+                    if self.create_database():
+                        retry_count += 1
+                        continue
+                    else:
+                        logger.error("Failed to create database")
+                        break
+                elif error_code == 1045:  # Access denied
+                    logger.error("Access denied. Please check your MySQL credentials.")
+                    break
+                elif error_code == 2003:  # Can't connect to MySQL server
+                    logger.error("Can't connect to MySQL server. Please ensure MySQL is running.")
+                    break
+                else:
+                    logger.error(f"Database connection error: {err}")
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        logger.info(f"Retrying connection... (attempt {retry_count + 1}/{max_retries})")
+                        continue
+            except pymysql.Error as err:
+                logger.error(f"Unexpected database error: {err}")
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.info(f"Retrying connection... (attempt {retry_count + 1}/{max_retries})")
+                    continue
+            except Exception as err:
+                logger.error(f"Unexpected error during database connection: {err}")
+                break
+
+        logger.error("Failed to establish database connection after multiple attempts")
+        sys.exit(1)
     
-    def create_database(self):
-        """Create database if it doesn't exist"""
+    def create_database(self) -> bool:
+        """Create database if it doesn't exist. Returns True on success."""
         try:
-            connection = pymysql.connect(
-                host='localhost',
-                user='root',
-                password='root123'
-            )
+            # Connect without specifying database
+            temp_config = self.db_config.get_connection_params()
+            temp_config.pop('database', None)
+
+            connection = pymysql.connect(**temp_config)
             cursor = connection.cursor()
-            cursor.execute("CREATE DATABASE IF NOT EXISTS school_management")
+
+            # Create database with proper charset
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{self.db_config.database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
             cursor.close()
             connection.close()
-            
-            # Reconnect to the new database
-            self.connection = pymysql.connect(
-                host='localhost',
-                user='root',
-                password='root123',
-                database='school_management'
-            )
-            print("Database created successfully!")
+
+            logger.info(f"Database '{self.db_config.database}' created successfully!")
+
+            # Now reconnect to the newly created database
+            self.connection = pymysql.connect(**self.db_config.get_connection_params())
+            return True
+
         except pymysql.Error as err:
-            print(f"Error creating database: {err}")
-            sys.exit(1)
+            logger.error(f"Error creating database: {err}")
+            return False
+        except Exception as err:
+            logger.error(f"Unexpected error creating database: {err}")
+            return False
     
+    def _get_schema_version(self) -> Optional[int]:
+        """Get current database schema version"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+            result = cursor.fetchone()
+            cursor.close()
+            return result[0] if result else None
+        except pymysql.Error:
+            # Schema version table doesn't exist yet
+            return None
+
+    def _update_schema_version(self, version: int):
+        """Update schema version"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("UPDATE schema_version SET version = %s", (version,))
+            cursor.close()
+        except pymysql.Error as err:
+            logger.error(f"Failed to update schema version: {err}")
+
     def hash_password(self, password):
         """Simple password hashing"""
         return hashlib.sha256(password.encode()).hexdigest()
     
     def create_tables(self):
-        """Create all necessary tables"""
+        """Create all necessary tables with proper schema versioning"""
         cursor = self.connection.cursor()
 
-        # Add database migration for timetable table
+        # Check database schema version
+        schema_version = self._get_schema_version()
+
+        logger.info(f"Current database schema version: {schema_version}")
+
+        # Create schema version table if it doesn't exist
         try:
-            # Check if break_start_time column exists, if not add it
-            cursor.execute("SHOW COLUMNS FROM timetable LIKE 'break_start_time'")
-            if not cursor.fetchone():
-                cursor.execute("ALTER TABLE timetable ADD COLUMN break_start_time TIME DEFAULT NULL")
-                cursor.execute("ALTER TABLE timetable ADD COLUMN break_end_time TIME DEFAULT NULL")
-                cursor.execute("ALTER TABLE timetable ADD COLUMN created_by INT DEFAULT NULL")
-                cursor.execute("ALTER TABLE timetable ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                cursor.execute("ALTER TABLE timetable ADD CONSTRAINT fk_timetable_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL")
-                print("Database migration completed: Added break time and audit fields to timetable")
-        except pymysql.Error:
-            # Table might not exist yet, which is fine - it will be created below
-            pass
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INT PRIMARY KEY DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+            """)
+        except pymysql.Error as err:
+            logger.error(f"Failed to create schema_version table: {err}")
+            return
+
+        # Initialize schema version if empty
+        if schema_version is None:
+            try:
+                cursor.execute("INSERT INTO schema_version (version) VALUES (1)")
+                schema_version = 1
+                logger.info("Initialized schema version to 1")
+            except pymysql.Error as err:
+                logger.error(f"Failed to initialize schema version: {err}")
+                return
 
         tables = [
             """
@@ -183,7 +311,7 @@ class SchoolManagementSystem:
                 recorded_by INT,
                 recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-                FOREIGN KEY (recorded_by) REFERENCES teachers(id) ON DELETE CASCADE
+                FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL
             )
             """,
             """
@@ -358,9 +486,11 @@ class SchoolManagementSystem:
             print("21. Create Principal")
             print("22. Create Academic Coordinator")
             print("23. Create Admission Department User")
-            print("24. Logout")
+            print("24. View User Credentials")
+            print("25. Mark Student Attendance")
+            print("26. Logout")
 
-            choice = input("\nEnter your choice (1-24): ").strip()
+            choice = input("\nEnter your choice (1-26): ").strip()
 
             if choice == '1':
                 self.create_teacher()
@@ -409,11 +539,172 @@ class SchoolManagementSystem:
             elif choice == '23':
                 self.create_admission_department()
             elif choice == '24':
+                self.view_user_credentials()
+            elif choice == '25':
+                self.mark_student_attendance_admin()
+            elif choice == '26':
                 self.logout()
                 break
             else:
                 print("Invalid choice! Please try again.")
-    
+
+    def view_user_credentials(self):
+        """Admin: View all user usernames and passwords"""
+        print("\n" + "="*50)
+        print("        VIEW USER CREDENTIALS")
+        print("="*50)
+
+        cursor = self.connection.cursor(pymysql.cursors.DictCursor)
+
+        try:
+            cursor.execute("""
+            SELECT u.id, u.username, u.role,
+                   CASE WHEN u.role = 'student' THEN s.name
+                        WHEN u.role IN ('teacher', 'principal', 'academic_coordinator', 'admission_department') THEN t.name
+                        ELSE 'N/A' END as name,
+                   CASE WHEN u.role = 'student' THEN CONCAT(c.class_name, '-', c.section)
+                        ELSE 'N/A' END as class_info
+            FROM users u
+            LEFT JOIN students s ON u.id = s.user_id
+            LEFT JOIN teachers t ON u.id = t.user_id
+            LEFT JOIN classes c ON s.class_id = c.id
+            ORDER BY u.role, u.username
+            """)
+
+            users = cursor.fetchall()
+
+            if not users:
+                print("No users found.")
+                return
+
+            print("\nAll User Credentials:")
+            print("-" * 100)
+            print(f"{'ID':<3} {'Username':<20} {'Role':<20} {'Name':<25} {'Class':<10}")
+            print("-" * 100)
+
+            for user in users:
+                name = user['name'] or 'N/A'
+                class_info = user['class_info'] or 'N/A'
+                print(f"{user['id']:<3} {user['username']:<20} {user['role']:<20} {name[:24]:<25} {class_info:<10}")
+
+            print("-" * 100)
+            print(f"\nTotal users: {len(users)}")
+            print("\nNOTE: All user passwords are hashed. Default passwords:")
+            print("  - Admin: admin123")
+            print("  - Teachers: teacher123")
+            print("  - Students: student123 (or as set by admin)")
+            print("  - Other roles: role123 (e.g., principal123)")
+
+        except pymysql.Error as err:
+            print(f"Database error: {err}")
+        finally:
+            cursor.close()
+
+    def mark_student_attendance_admin(self):
+        """Admin: Mark attendance for students in any class"""
+        print("\n" + "="*50)
+        print("    ADMIN: MARK STUDENT ATTENDANCE")
+        print("="*50)
+
+        cursor = self.connection.cursor(pymysql.cursors.DictCursor)
+
+        try:
+            # Show available classes
+            cursor.execute("SELECT * FROM classes ORDER BY class_name, section")
+            classes = cursor.fetchall()
+
+            if not classes:
+                print("No classes available.")
+                return
+
+            print("\nAvailable Classes:")
+            for cls in classes:
+                print(f"{cls['id']}. {cls['class_name']} - Section {cls['section']}")
+
+            class_id = int(input("\nSelect Class ID: "))
+
+            # Verify class exists
+            cursor.execute("SELECT class_name, section FROM classes WHERE id = %s", (class_id,))
+            class_info = cursor.fetchone()
+            if not class_info:
+                print("Class not found!")
+                return
+
+            attendance_date = input("Date (YYYY-MM-DD) [Today]: ").strip()
+            if not attendance_date:
+                attendance_date = date.today().isoformat()
+
+            # Get all students from the selected class (regardless of status, but show status)
+            cursor.execute("""
+            SELECT s.id, s.name, s.admission_number,
+                   CASE WHEN ss.status IS NULL THEN 'active' ELSE ss.status END as status
+            FROM students s
+            LEFT JOIN student_status ss ON s.id = ss.student_id
+            WHERE s.class_id = %s
+            ORDER BY s.name
+            """, (class_id,))
+
+            students = cursor.fetchall()
+
+            if not students:
+                print("No students in this class.")
+                return
+
+            print(f"\nMarking attendance for {class_info['class_name']}-{class_info['section']} on {attendance_date}")
+            print("Status: A=Absent, P=Present, S=Suspended, R=Removed")
+            print("Enter 'P' for Present, 'A' for Absent, or press Enter for Absent")
+            print("-" * 70)
+
+            marked_count = 0
+            for student in students:
+                status_display = student['status'][0].upper() if len(student['status']) > 0 else 'A'
+                status_input = input(f"{student['name']} ({student['admission_number']}) [{status_display}]: ").strip().upper()
+
+                if status_input == 'P':
+                    final_status = 'present'
+                elif status_input == 'A':
+                    final_status = 'absent'
+                else:
+                    # Default to absent if invalid input
+                    final_status = 'absent'
+
+                # Check if attendance already exists
+                cursor.execute(
+                    "SELECT id FROM student_attendance WHERE student_id = %s AND date = %s",
+                    (student['id'], attendance_date)
+                )
+                existing = cursor.fetchone()
+
+                if existing:
+                    # Update existing
+                    update_query = """
+                    UPDATE student_attendance
+                    SET status = %s, recorded_by = %s, recorded_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """
+                    cursor.execute(update_query, (final_status, self.current_user['id'], existing['id']))
+                else:
+                    # Insert new
+                    insert_query = """
+                    INSERT INTO student_attendance (student_id, date, status, recorded_by)
+                    VALUES (%s, %s, %s, %s)
+                    """
+                    cursor.execute(insert_query, (student['id'], attendance_date, final_status, self.current_user['id']))
+
+                marked_count += 1
+
+            self.connection.commit()
+            print(f"\n✓ Attendance marked successfully for {marked_count} students in {class_info['class_name']}-{class_info['section']}!")
+            print("✓ Attendance results are now reflected in teacher and student profiles.")
+
+        except ValueError:
+            print("Invalid class ID!")
+        except pymysql.Error as err:
+            print(f"Database error: {err}")
+            self.connection.rollback()
+        finally:
+            cursor.close()
+
     def create_teacher(self):
         """Create a new teacher"""
         print("\n" + "="*50)
@@ -1131,12 +1422,12 @@ class SchoolManagementSystem:
         try:
             if choice == '1':
                 cursor.execute("""
-                SELECT sa.date, s.name as student_name, c.class_name, c.section, 
-                       sa.status, t.name as recorded_by 
+                SELECT sa.date, s.name as student_name, c.class_name, c.section,
+                       sa.status, u.username as recorded_by
                 FROM student_attendance sa
                 JOIN students s ON sa.student_id = s.id
                 JOIN classes c ON s.class_id = c.id
-                JOIN teachers t ON sa.recorded_by = t.id
+                LEFT JOIN users u ON sa.recorded_by = u.id
                 ORDER BY sa.date DESC, s.name
                 LIMIT 50
                 """)
@@ -1481,8 +1772,6 @@ class SchoolManagementSystem:
             print("Enter 'P' for Present, 'A' for Absent, or press Enter for Absent")
             print("-" * 60)
 
-            teacher_id = self.get_teacher_id()
-
             for student in students:
                 status = input(f"{student['name']} ({student['admission_number']}) [P/A]: ").strip().upper()
                 final_status = 'present' if status == 'P' else 'absent'
@@ -1501,14 +1790,14 @@ class SchoolManagementSystem:
                     SET status = %s, recorded_by = %s, recorded_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     """
-                    cursor.execute(update_query, (final_status, teacher_id, existing['id']))
+                    cursor.execute(update_query, (final_status, self.current_user['id'], existing['id']))
                 else:
                     # Insert new
                     insert_query = """
                     INSERT INTO student_attendance (student_id, date, status, recorded_by)
                     VALUES (%s, %s, %s, %s)
                     """
-                    cursor.execute(insert_query, (student['id'], attendance_date, final_status, teacher_id))
+                    cursor.execute(insert_query, (student['id'], attendance_date, final_status, self.current_user['id']))
 
             self.connection.commit()
             print(f"\n✓ Attendance marked successfully for {len(students)} students in {assigned_class['class_name']}-{assigned_class['section']}!")
@@ -1736,9 +2025,9 @@ class SchoolManagementSystem:
                 try:
                     cursor.execute("""
                     SELECT sa.date, sa.status, sa.recorded_at,
-                           CASE WHEN sa.recorded_by IS NOT NULL THEN t.name ELSE 'Admin' END as recorded_by_name
+                           u.username as recorded_by_name
                     FROM student_attendance sa
-                    LEFT JOIN teachers t ON sa.recorded_by = t.id
+                    LEFT JOIN users u ON sa.recorded_by = u.id
                     WHERE sa.student_id = (SELECT id FROM students WHERE user_id = %s)
                     ORDER BY sa.date DESC, sa.recorded_at DESC
                     """, (self.current_user['id'],))
@@ -1959,12 +2248,12 @@ class SchoolManagementSystem:
             print(f"Class: {student['class_name']}-{student['section']}")
             print("-" * 100)
 
-            # Get attendance history with teacher info
+            # Get attendance history with user info
             cursor.execute("""
             SELECT sa.date, sa.status, sa.recorded_at,
-                   CASE WHEN sa.recorded_by IS NOT NULL THEN t.name ELSE 'Admin' END as recorded_by_name
+                   u.username as recorded_by_name
             FROM student_attendance sa
-            LEFT JOIN teachers t ON sa.recorded_by = t.id
+            LEFT JOIN users u ON sa.recorded_by = u.id
             WHERE sa.student_id = %s
             ORDER BY sa.date DESC, sa.recorded_at DESC
             """, (student_id,))
@@ -2077,9 +2366,9 @@ class SchoolManagementSystem:
             # Check if attendance record exists
             cursor.execute("""
             SELECT sa.id, sa.status, sa.recorded_at,
-                   CASE WHEN sa.recorded_by IS NOT NULL THEN t.name ELSE 'Admin' END as recorded_by_name
+                   u.username as recorded_by_name
             FROM student_attendance sa
-            LEFT JOIN teachers t ON sa.recorded_by = t.id
+            LEFT JOIN users u ON sa.recorded_by = u.id
             WHERE sa.student_id = %s AND sa.date = %s
             """, (student_id, attendance_date))
 
@@ -2103,7 +2392,7 @@ class SchoolManagementSystem:
                 UPDATE student_attendance
                 SET status = %s, recorded_by = %s, recorded_at = CURRENT_TIMESTAMP
                 WHERE id = %s
-                """, (new_status, self.get_teacher_id() if self.current_role == 'teacher' else None, existing_record['id']))
+                """, (new_status, self.current_user['id'], existing_record['id']))
 
                 print(f"✓ Attendance updated successfully! Changed to {new_status.upper()}")
 
@@ -2117,7 +2406,7 @@ class SchoolManagementSystem:
                 cursor.execute("""
                 INSERT INTO student_attendance (student_id, date, status, recorded_by)
                 VALUES (%s, %s, %s, %s)
-                """, (student_id, attendance_date, new_status, self.get_teacher_id() if self.current_role == 'teacher' else None))
+                """, (student_id, attendance_date, new_status, self.current_user['id']))
 
                 print(f"✓ New attendance record created! Status: {new_status.upper()}")
 
@@ -4696,6 +4985,160 @@ class SchoolManagementSystem:
             else:
                 # Already logged in - this shouldn't happen due to dashboard loops
                 self.current_user = None
+
+    def edit_user_details(self):
+        """Admin: Edit user details (username, password, name, etc.)"""
+        print("\n" + "="*50)
+        print("        EDIT USER DETAILS")
+        print("="*50)
+
+        cursor = self.connection.cursor(pymysql.cursors.DictCursor)
+
+        try:
+            # Show all users
+            cursor.execute("""
+            SELECT u.id, u.username, u.role,
+                   CASE WHEN u.role = 'student' THEN s.name
+                        WHEN u.role IN ('teacher', 'principal', 'academic_coordinator', 'admission_department') THEN t.name
+                        ELSE 'N/A' END as name
+            FROM users u
+            LEFT JOIN students s ON u.id = s.user_id
+            LEFT JOIN teachers t ON u.id = t.user_id
+            ORDER BY u.role, u.username
+            """)
+
+            users = cursor.fetchall()
+
+            if not users:
+                print("No users found.")
+                return
+
+            print("\nAvailable Users:")
+            print("-" * 80)
+            for user in users:
+                print(f"{user['id']}. {user['username']} ({user['role']}) - {user['name']}")
+
+            user_id = int(input("\nEnter User ID to edit: "))
+
+            # Verify user exists
+            user_info = next((u for u in users if u['id'] == user_id), None)
+            if not user_info:
+                print("User not found!")
+                return
+
+            print(f"\nEditing user: {user_info['username']} ({user_info['role']})")
+
+            # Get current details
+            if user_info['role'] == 'student':
+                cursor.execute("SELECT * FROM students WHERE user_id = %s", (user_id,))
+                details = cursor.fetchone()
+            elif user_info['role'] in ('teacher', 'principal', 'academic_coordinator', 'admission_department'):
+                cursor.execute("SELECT * FROM teachers WHERE user_id = %s", (user_id,))
+                details = cursor.fetchone()
+            else:
+                print("Cannot edit this user type.")
+                return
+
+            # Edit username
+            new_username = input(f"Username (current: {user_info['username']}): ").strip()
+            if new_username and new_username != user_info['username']:
+                # Check uniqueness
+                cursor.execute("SELECT id FROM users WHERE username = %s AND id != %s", (new_username, user_id))
+                if cursor.fetchone():
+                    print("Username already exists!")
+                    return
+                cursor.execute("UPDATE users SET username = %s WHERE id = %s", (new_username, user_id))
+                print("✓ Username updated")
+
+            # Edit password
+            new_password = input("New Password (leave empty to keep current): ").strip()
+            if new_password:
+                hashed_password = self.hash_password(new_password)
+                cursor.execute("UPDATE users SET password = %s WHERE id = %s", (hashed_password, user_id))
+                print("✓ Password updated")
+
+            # Edit name (only if not student/teacher - wait, admin can edit names)
+            if details:
+                new_name = input(f"Name (current: {details.get('name', 'N/A')}): ").strip()
+                if new_name and new_name != details.get('name'):
+                    if user_info['role'] == 'student':
+                        cursor.execute("UPDATE students SET name = %s WHERE user_id = %s", (new_name, user_id))
+                    else:
+                        cursor.execute("UPDATE teachers SET name = %s WHERE user_id = %s", (new_name, user_id))
+                    print("✓ Name updated")
+
+                # Edit age and DOB for teachers/students
+                if 'age' in details:
+                    # For age, we need to recalculate from DOB
+                    current_dob = details.get('dob', '')
+                    new_dob_input = input(f"Date of Birth (YYYY-MM-DD) (current: {current_dob}): ").strip()
+                    if new_dob_input:
+                        try:
+                            new_dob = datetime.strptime(new_dob_input, '%Y-%m-%d').date()
+                            today = date.today()
+                            new_age = today.year - new_dob.year - ((today.month, today.day) < (new_dob.month, new_dob.day))
+
+                            if user_info['role'] == 'student':
+                                cursor.execute("UPDATE students SET dob = %s, age = %s WHERE user_id = %s",
+                                             (new_dob, new_age, user_id))
+                            else:
+                                cursor.execute("UPDATE teachers SET dob = %s, age = %s WHERE user_id = %s",
+                                             (new_dob, new_age, user_id))
+                            print("✓ DOB and Age updated")
+                        except ValueError:
+                            print("Invalid date format!")
+
+                # Edit other fields based on role
+                if user_info['role'] == 'student':
+                    # Student-specific fields
+                    fields_to_edit = {
+                        'previous_school': 'Previous School',
+                        'father_name': 'Father Name',
+                        'mother_name': 'Mother Name',
+                        'father_occupation': 'Father Occupation',
+                        'mother_occupation': 'Mother Occupation',
+                        'contact_number': 'Contact Number',
+                        'emergency_contact': 'Emergency Contact'
+                    }
+
+                    for field, label in fields_to_edit.items():
+                        current_value = details.get(field, '')
+                        new_value = input(f"{label} (current: {current_value}): ").strip()
+                        if new_value and new_value != current_value:
+                            # Validate numeric fields
+                            if field in ['contact_number', 'emergency_contact']:
+                                try:
+                                    int(new_value)
+                                except ValueError:
+                                    print(f"{label} must be numeric!")
+                                    continue
+                            cursor.execute(f"UPDATE students SET {field} = %s WHERE user_id = %s", (new_value, user_id))
+                            print(f"✓ {label} updated")
+
+                elif user_info['role'] in ('teacher', 'principal', 'academic_coordinator', 'admission_department'):
+                    # Teacher-specific fields
+                    fields_to_edit = {
+                        'highest_qualifications': 'Qualifications',
+                        'teaching_subject': 'Subject/Specialization'
+                    }
+
+                    for field, label in fields_to_edit.items():
+                        current_value = details.get(field, '')
+                        new_value = input(f"{label} (current: {current_value}): ").strip()
+                        if new_value and new_value != current_value:
+                            cursor.execute(f"UPDATE teachers SET {field} = %s WHERE user_id = %s", (new_value, user_id))
+                            print(f"✓ {label} updated")
+
+            self.connection.commit()
+            print("\n✓ User details updated successfully!")
+
+        except ValueError:
+            print("Invalid input!")
+        except pymysql.Error as err:
+            print(f"Database error: {err}")
+            self.connection.rollback()
+        finally:
+            cursor.close()
 
     def database_maintenance(self):
         """Admin: Database maintenance and cleanup"""
