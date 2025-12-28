@@ -197,9 +197,42 @@ USE school_management;
 -- Run this if you get "Unknown column 'tp.can_edit_attendance'" error
 ALTER TABLE teacher_privileges ADD COLUMN can_edit_attendance BOOLEAN DEFAULT FALSE;
 
+-- Fix 2: Fix student_attendance foreign key constraint
+-- This fixes the foreign key constraint to reference users(id) instead of teachers(id)
+-- First, check and drop any existing foreign key constraint on recorded_by column
+SET @constraint_name = (
+    SELECT CONSTRAINT_NAME
+    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+    WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'student_attendance'
+    AND COLUMN_NAME = 'recorded_by'
+    AND REFERENCED_TABLE_NAME IS NOT NULL
+);
+SET @sql = IF(@constraint_name IS NOT NULL, CONCAT('ALTER TABLE student_attendance DROP FOREIGN KEY ', @constraint_name), 'SELECT "No foreign key found on recorded_by column"');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Now add the correct foreign key constraint
+ALTER TABLE student_attendance ADD CONSTRAINT fk_student_attendance_recorded_by FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL;
+
 -- Verify the fix worked
 SELECT 'Database update completed successfully!' as status;
 DESCRIBE teacher_privileges;
+DESCRIBE student_attendance;
+
+-- =====================================================================================
+-- FIXATION FOR STUDENT ATTENDANCE FOREIGN KEY ERROR
+-- =====================================================================================
+-- If you encounter the error:
+-- "Cannot add or update a child row: a foreign key constraint fails (school_management.student_attendance,
+--  CONSTRAINT student_attendance_ibfk_2 FOREIGN KEY (recorded_by) REFERENCES teachers (id) ON DELETE CASCADE)"
+--
+-- This happens because the recorded_by field incorrectly references teachers(id) instead of users(id).
+-- The fix above corrects this by dropping the wrong constraint and adding the correct one.
+--
+-- This allows admin users (who don't have teacher records) to mark student attendance,
+-- as recorded_by should reference the users table for all user roles.
 
 -- =====================================================================================
 -- DATABASE MIGRATIONS
@@ -357,7 +390,7 @@ UPDATE teacher_attendance SET status = %s, recorded_by = %s, recorded_at = CURRE
 -- =====================================================================================
 
 -- View attendance records (student)
-SELECT sa.date, s.name as student_name, c.class_name, c.section, sa.status, t.name as recorded_by FROM student_attendance sa JOIN students s ON sa.student_id = s.id JOIN classes c ON s.class_id = c.id JOIN teachers t ON sa.recorded_by = t.id ORDER BY sa.date DESC, s.name LIMIT 50;
+SELECT sa.date, s.name as student_name, c.class_name, c.section, sa.status, u.username as recorded_by FROM student_attendance sa JOIN students s ON sa.student_id = s.id JOIN classes c ON s.class_id = c.id LEFT JOIN users u ON sa.recorded_by = u.id ORDER BY sa.date DESC, s.name LIMIT 50;
 
 -- View attendance records (teacher)
 SELECT ta.date, t.name as teacher_name, ta.status, u.username as recorded_by, ta.recorded_at FROM teacher_attendance ta JOIN teachers t ON ta.teacher_id = t.id JOIN users u ON ta.recorded_by = u.id ORDER BY ta.date DESC, t.name LIMIT 50;
@@ -390,10 +423,10 @@ SELECT date, status, recorded_at FROM student_attendance WHERE student_id = (SEL
 SELECT s.subject_name, t.name as teacher_name FROM subjects s JOIN teachers t ON s.teacher_id = t.id WHERE s.class_id = (SELECT class_id FROM students WHERE user_id = %s) ORDER BY s.subject_name;
 
 -- View student attendance history
-SELECT sa.date, sa.status, sa.recorded_at, CASE WHEN sa.recorded_by IS NOT NULL THEN t.name ELSE 'Admin' END as recorded_by_name FROM student_attendance sa LEFT JOIN teachers t ON sa.recorded_by = t.id WHERE sa.student_id = (SELECT id FROM students WHERE user_id = %s) ORDER BY sa.date DESC, sa.recorded_at DESC;
+SELECT sa.date, sa.status, sa.recorded_at, CASE WHEN sa.recorded_by IS NOT NULL THEN u.username ELSE 'Admin' END as recorded_by_name FROM student_attendance sa LEFT JOIN users u ON sa.recorded_by = u.id WHERE sa.student_id = (SELECT id FROM students WHERE user_id = %s) ORDER BY sa.date DESC, sa.recorded_at DESC;
 
 -- View student attendance history (admin)
-SELECT sa.date, sa.status, sa.recorded_at, CASE WHEN sa.recorded_by IS NOT NULL THEN t.name ELSE 'Admin' END as recorded_by_name FROM student_attendance sa LEFT JOIN teachers t ON sa.recorded_by = t.id WHERE sa.student_id = %s ORDER BY sa.date DESC, sa.recorded_at DESC;
+SELECT sa.date, sa.status, sa.recorded_at, CASE WHEN sa.recorded_by IS NOT NULL THEN u.username ELSE 'Admin' END as recorded_by_name FROM student_attendance sa LEFT JOIN users u ON sa.recorded_by = u.id WHERE sa.student_id = %s ORDER BY sa.date DESC, sa.recorded_at DESC;
 
 -- View student profile
 SELECT s.*, c.class_name, c.section FROM students s JOIN classes c ON s.class_id = c.id WHERE s.user_id = %s;
@@ -411,7 +444,7 @@ SELECT DISTINCT c.class_name, c.section, COUNT(DISTINCT s.id) as student_count, 
 SELECT s.id, s.subject_name, c.class_name, c.section, t.name as teacher_name FROM subjects s JOIN classes c ON s.class_id = c.id LEFT JOIN teachers t ON s.teacher_id = t.id ORDER BY c.class_name, c.section, s.subject_name;
 
 -- View student attendance history (specific student)
-SELECT sa.date, sa.status, sa.recorded_at, CASE WHEN sa.recorded_by IS NOT NULL THEN t.name ELSE 'Admin' END as recorded_by_name FROM student_attendance sa LEFT JOIN teachers t ON sa.recorded_by = t.id WHERE sa.student_id = %s ORDER BY sa.date DESC, sa.recorded_at DESC;
+SELECT sa.date, sa.status, sa.recorded_at, CASE WHEN sa.recorded_by IS NOT NULL THEN u.username ELSE 'Admin' END as recorded_by_name FROM student_attendance sa LEFT JOIN users u ON sa.recorded_by = u.id WHERE sa.student_id = %s ORDER BY sa.date DESC, sa.recorded_at DESC;
 
 -- =====================================================================================
 -- TEACHER PRIVILEGES MANAGEMENT
