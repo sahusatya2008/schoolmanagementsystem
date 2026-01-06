@@ -12,9 +12,49 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class DatabaseConfig:
-    """Database configuration class to handle connection settings securely"""
+    """
+    Database Configuration Manager
+
+    This class securely manages MySQL database connection parameters by prioritizing
+    environment variables for sensitive data while falling back to user prompts.
+    It implements connection validation to ensure database accessibility before
+    proceeding with application startup.
+
+    The class supports flexible configuration through environment variables:
+    - DB_HOST: Database server hostname (default: localhost)
+    - DB_USER: Database username (default: root)
+    - DB_PASSWORD: Database password (prompted if not set)
+    - DB_NAME: Target database name (default: school_management)
+    - DB_PORT: Database server port (default: 3306)
+
+    Attributes:
+        host (str): MySQL server hostname or IP address.
+        user (str): MySQL database username for authentication.
+        password (str): MySQL user password (securely prompted if missing).
+        database (str): Name of the target database to connect to.
+        port (int): MySQL server port number.
+        charset (str): Character set for database connection (UTF-8 default).
+
+    Methods:
+        __init__(): Initializes configuration with secure credential handling.
+        _test_connection(): Validates database server connectivity.
+        get_connection_params(): Returns complete connection parameters dictionary.
+
+    Raises:
+        SystemExit: If database connection test fails after configuration setup.
+    """
 
     def __init__(self):
+        """
+        Initialize database configuration with secure credential handling.
+
+        Reads database connection parameters from environment variables with sensible defaults.
+        Prompts user for password if not provided via environment. Validates connection
+        to ensure database server is accessible before proceeding.
+
+        Raises:
+            SystemExit: If database connection test fails.
+        """
         self.host = os.getenv('DB_HOST', 'localhost')
         self.user = os.getenv('DB_USER', 'root')
         self.password = os.getenv('DB_PASSWORD', '')
@@ -33,8 +73,21 @@ class DatabaseConfig:
             sys.exit(1)
 
     def _test_connection(self) -> bool:
-        """Test database connection without selecting a database"""
+        """
+        Test database connection without selecting a specific database.
+
+        Attempts to establish a connection to the MySQL server using provided credentials
+        but does not specify a database name. This verifies server accessibility and
+        authentication without requiring the target database to exist.
+
+        Returns:
+            bool: True if connection successful, False otherwise.
+
+        Logs:
+            ERROR: Details of connection failure for troubleshooting.
+        """
         try:
+            # Attempt connection without database selection
             connection = pymysql.connect(
                 host=self.host,
                 user=self.user,
@@ -50,7 +103,25 @@ class DatabaseConfig:
             return False
 
     def get_connection_params(self) -> Dict[str, Any]:
-        """Get connection parameters for pymysql"""
+        """
+        Get complete connection parameters dictionary for pymysql.connect().
+
+        Returns a dictionary containing all necessary parameters for establishing
+        a MySQL database connection, including timeout settings for robust operation.
+
+        Returns:
+            Dict[str, Any]: Dictionary with connection parameters including:
+                - host: Server hostname
+                - user: Database username
+                - password: User password
+                - database: Target database name
+                - port: Server port
+                - charset: Character encoding
+                - autocommit: Transaction auto-commit setting
+                - connect_timeout: Connection establishment timeout
+                - read_timeout: Read operation timeout
+                - write_timeout: Write operation timeout
+        """
         return {
             'host': self.host,
             'user': self.user,
@@ -65,7 +136,77 @@ class DatabaseConfig:
         }
 
 class SchoolManagementSystem:
+    """
+    School Management System Core Class
+
+    This is the main orchestration class for the comprehensive school management application.
+    It manages the complete lifecycle of the application including database initialization,
+    user authentication, role-based access control, and provides specialized dashboards
+    for different user roles within the educational institution.
+
+    The system implements a multi-role architecture supporting:
+    - Administrators: Full system management and configuration
+    - Teachers: Student management, attendance, and teaching assignments
+    - Students: Personal profile and attendance viewing
+    - Principals: Read-only access to all school data
+    - Academic Coordinators: Curriculum and subject management
+    - Admission Department: Student enrollment and status tracking
+    - System Administrators: Technical maintenance and database operations
+
+    Key Capabilities:
+    - Secure user authentication with role-based permissions
+    - Student enrollment and profile management
+    - Teacher hiring and assignment management
+    - Attendance tracking for both students and teachers
+    - Timetable creation and management with break periods
+    - Subject assignment and class management
+    - Status management (active, suspended, removed) for users
+    - Comprehensive reporting and data analytics
+    - Database schema versioning and migration support
+
+    Security Features:
+    - Password hashing using SHA-256
+    - Role-based access control with granular permissions
+    - Secure credential management with environment variable support
+    - Transaction-based database operations for data integrity
+
+    Attributes:
+        db_config (DatabaseConfig): Instance of DatabaseConfig for connection management.
+        connection (pymysql.Connection): Active MySQL database connection object.
+        current_user (Optional[dict]): Information about the currently logged-in user.
+        current_role (Optional[str]): Current user's role identifier.
+
+    Methods:
+        __init__(): Initializes the system with database setup and configuration.
+        connect_db(): Establishes and manages database connection with retry logic.
+        create_database(): Creates the target database if it doesn't exist.
+        create_tables(): Initializes all database tables and default data.
+        login(): Handles user authentication process.
+        logout(): Clears current user session.
+        run(): Main application loop managing login and dashboard routing.
+
+    Role-specific Dashboards:
+        admin_dashboard(): Administrative control panel with full system access.
+        teacher_dashboard(): Teacher-specific functions and student management.
+        student_dashboard(): Student profile and attendance viewing.
+        principal_dashboard(): Read-only overview of all school data.
+        academic_coordinator_dashboard(): Academic planning and curriculum management.
+        admission_department_dashboard(): Student admissions and enrollment.
+        system_admin_dashboard(): Technical maintenance and database operations.
+
+    Note:
+        All database operations are wrapped in try-except blocks with proper
+        error handling and logging. The system uses transaction management
+        for data consistency in multi-step operations.
+    """
+
     def __init__(self):
+        """
+        Initialize the School Management System.
+
+        Sets up database configuration, establishes database connection,
+        and creates necessary database tables and default admin user.
+        """
         self.db_config = DatabaseConfig()
         self.connection = None
         self.current_user = None
@@ -74,9 +215,18 @@ class SchoolManagementSystem:
         self.create_tables()
     
     def connect_db(self):
-        """Connect to MySQL database with improved error handling"""
-        max_retries = 3
-        retry_count = 0
+        """
+        Establish connection to MySQL database with robust error handling and retry logic.
+
+        Attempts to connect to the specified database with automatic database creation
+        if it doesn't exist. Implements retry mechanism for transient connection issues
+        and handles specific MySQL error codes appropriately.
+
+        Raises:
+            SystemExit: If connection cannot be established after retries.
+        """
+        max_retries = 3  # Maximum number of connection attempts
+        retry_count = 0  # Current retry attempt counter
 
         while retry_count < max_retries:
             try:
@@ -85,51 +235,63 @@ class SchoolManagementSystem:
                 logger.info("Connected to database successfully!")
                 return
             except pymysql.err.OperationalError as err:
-                error_code = err.args[0]
-                if error_code == 1049:  # Unknown database
+                error_code = err.args[0]  # Extract MySQL error code
+                if error_code == 1049:  # Unknown database error
                     logger.warning(f"Database '{self.db_config.database}' does not exist. Attempting to create...")
                     if self.create_database():
-                        retry_count += 1
-                        continue
+                        retry_count += 1  # Increment retry after successful database creation
+                        continue  # Retry connection with newly created database
                     else:
                         logger.error("Failed to create database")
-                        break
-                elif error_code == 1045:  # Access denied
+                        break  # Exit retry loop on creation failure
+                elif error_code == 1045:  # Access denied error
                     logger.error("Access denied. Please check your MySQL credentials.")
-                    break
-                elif error_code == 2003:  # Can't connect to MySQL server
+                    break  # Fatal error, no retry
+                elif error_code == 2003:  # Cannot connect to MySQL server
                     logger.error("Can't connect to MySQL server. Please ensure MySQL is running.")
-                    break
+                    break  # Fatal error, no retry
                 else:
                     logger.error(f"Database connection error: {err}")
-                    retry_count += 1
+                    retry_count += 1  # Increment retry for unknown operational errors
                     if retry_count < max_retries:
                         logger.info(f"Retrying connection... (attempt {retry_count + 1}/{max_retries})")
                         continue
             except pymysql.Error as err:
                 logger.error(f"Unexpected database error: {err}")
-                retry_count += 1
+                retry_count += 1  # Increment retry for general pymysql errors
                 if retry_count < max_retries:
                     logger.info(f"Retrying connection... (attempt {retry_count + 1}/{max_retries})")
                     continue
             except Exception as err:
                 logger.error(f"Unexpected error during database connection: {err}")
-                break
+                break  # Fatal error for non-database exceptions
 
         logger.error("Failed to establish database connection after multiple attempts")
-        sys.exit(1)
+        sys.exit(1)  # Terminate program on connection failure
     
     def create_database(self) -> bool:
-        """Create database if it doesn't exist. Returns True on success."""
+        """
+        Create the target database if it doesn't exist.
+
+        Establishes a connection without specifying a database, creates the database
+        with proper UTF-8 character set and collation, then reconnects to the new database.
+
+        Returns:
+            bool: True if database creation and reconnection successful, False otherwise.
+
+        Logs:
+            INFO: Successful database creation.
+            ERROR: Details of creation or reconnection failures.
+        """
         try:
-            # Connect without specifying database
+            # Connect without specifying database to create it
             temp_config = self.db_config.get_connection_params()
-            temp_config.pop('database', None)
+            temp_config.pop('database', None)  # Remove database parameter for creation
 
             connection = pymysql.connect(**temp_config)
             cursor = connection.cursor()
 
-            # Create database with proper charset
+            # Create database with proper charset and collation for Unicode support
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{self.db_config.database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
             cursor.close()
             connection.close()
@@ -148,7 +310,19 @@ class SchoolManagementSystem:
             return False
     
     def _get_schema_version(self) -> Optional[int]:
-        """Get current database schema version"""
+        """
+        Retrieve the current database schema version.
+
+        Queries the schema_version table to get the latest version number.
+        Returns None if the table doesn't exist or is empty.
+
+        Returns:
+            Optional[int]: Current schema version number, or None if not available.
+
+        Note:
+            Silently returns None if schema_version table doesn't exist yet
+            (during initial setup).
+        """
         try:
             cursor = self.connection.cursor()
             cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
@@ -156,11 +330,19 @@ class SchoolManagementSystem:
             cursor.close()
             return result[0] if result else None
         except pymysql.Error:
-            # Schema version table doesn't exist yet
+            # Schema version table doesn't exist yet (expected during initial setup)
             return None
 
     def _update_schema_version(self, version: int):
-        """Update schema version"""
+        """
+        Update the database schema version number.
+
+        Args:
+            version (int): New schema version to set.
+
+        Logs:
+            ERROR: If schema version update fails.
+        """
         try:
             cursor = self.connection.cursor()
             cursor.execute("UPDATE schema_version SET version = %s", (version,))
@@ -168,20 +350,39 @@ class SchoolManagementSystem:
         except pymysql.Error as err:
             logger.error(f"Failed to update schema version: {err}")
 
-    def hash_password(self, password):
-        """Simple password hashing"""
+    def hash_password(self, password: str) -> str:
+        """
+        Hash a password using SHA-256 for secure storage.
+
+        Uses SHA-256 hashing algorithm to create a secure hash of the password.
+        Note: In production, consider using salted hashing with libraries like bcrypt.
+
+        Args:
+            password (str): Plain text password to hash.
+
+        Returns:
+            str: Hexadecimal string representation of the password hash.
+        """
         return hashlib.sha256(password.encode()).hexdigest()
     
     def create_tables(self):
-        """Create all necessary tables with proper schema versioning"""
+        """
+        Create all necessary database tables with schema versioning.
+
+        Checks current schema version and creates tables only if they don't exist.
+        Initializes default admin user. Uses transactional approach for data integrity.
+
+        The system uses schema versioning to track database structure changes.
+        Currently supports version 1 schema with all core tables.
+        """
         cursor = self.connection.cursor()
 
-        # Check database schema version
+        # Check database schema version for potential future migrations
         schema_version = self._get_schema_version()
 
         logger.info(f"Current database schema version: {schema_version}")
 
-        # Create schema version table if it doesn't exist
+        # Create schema version table if it doesn't exist (required for versioning)
         try:
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -193,7 +394,7 @@ class SchoolManagementSystem:
             logger.error(f"Failed to create schema_version table: {err}")
             return
 
-        # Initialize schema version if empty
+        # Initialize schema version if empty (first-time setup)
         if schema_version is None:
             try:
                 cursor.execute("INSERT INTO schema_version (version) VALUES (1)")
@@ -203,7 +404,10 @@ class SchoolManagementSystem:
                 logger.error(f"Failed to initialize schema version: {err}")
                 return
 
+        # List of all database tables with their CREATE statements
+        # Each table includes proper foreign key constraints and indexes
         tables = [
+            # Users table: Stores all system users with authentication details
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -213,6 +417,7 @@ class SchoolManagementSystem:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """,
+            # Teachers table: Extended profile information for teaching staff
             """
             CREATE TABLE IF NOT EXISTS teachers (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -225,6 +430,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
             """,
+            # Teaching records table: Historical employment records for teachers
             """
             CREATE TABLE IF NOT EXISTS teaching_records (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -235,6 +441,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
             )
             """,
+            # Classes table: Academic class divisions (e.g., 12th-A, 11th-B)
             """
             CREATE TABLE IF NOT EXISTS classes (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -243,6 +450,7 @@ class SchoolManagementSystem:
                 UNIQUE KEY unique_class_section (class_name, section)
             )
             """,
+            # Subjects table: Academic subjects offered in specific classes
             """
             CREATE TABLE IF NOT EXISTS subjects (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -253,6 +461,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
             )
             """,
+            # Students table: Detailed student information and enrollment data
             """
             CREATE TABLE IF NOT EXISTS students (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -273,6 +482,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
             )
             """,
+            # Student subjects table: Many-to-many relationship between students and subjects
             """
             CREATE TABLE IF NOT EXISTS student_subjects (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -282,6 +492,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
             )
             """,
+            # Timetable table: Daily schedule for classes with subject and teacher assignments
             """
             CREATE TABLE IF NOT EXISTS timetable (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -302,6 +513,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
             )
             """,
+            # Student attendance table: Daily attendance records for students
             """
             CREATE TABLE IF NOT EXISTS student_attendance (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -314,6 +526,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL
             )
             """,
+            # Teacher attendance table: Daily attendance records for teachers
             """
             CREATE TABLE IF NOT EXISTS teacher_attendance (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -326,6 +539,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE CASCADE
             )
             """,
+            # Teacher privileges table: Granular permissions for teacher actions
             """
             CREATE TABLE IF NOT EXISTS teacher_privileges (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -338,6 +552,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
             )
             """,
+            # Student status table: Suspension and removal tracking for students
             """
             CREATE TABLE IF NOT EXISTS student_status (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -350,6 +565,7 @@ class SchoolManagementSystem:
                 FOREIGN KEY (suspended_by) REFERENCES users(id) ON DELETE SET NULL
             )
             """,
+            # Teacher status table: Suspension and removal tracking for teachers
             """
             CREATE TABLE IF NOT EXISTS teacher_status (
                  id INT AUTO_INCREMENT PRIMARY KEY,
@@ -402,7 +618,20 @@ class SchoolManagementSystem:
             cursor.close()
     
     def login(self):
-        """User login system"""
+        """
+        Authenticate user credentials and establish session.
+
+        Prompts for username and password, verifies against database records,
+        and performs additional checks for suspended/removed teachers.
+        Updates instance variables current_user and current_role on success.
+
+        Returns:
+            bool: True if authentication successful and session established, False otherwise.
+
+        Note:
+            Passwords are hashed using SHA-256 for secure comparison.
+            Teacher accounts may have suspension/removal status that prevents login.
+        """
         print("\n" + "="*50)
         print("        SCHOOL MANAGEMENT SYSTEM LOGIN")
         print("="*50)
@@ -452,13 +681,36 @@ class SchoolManagementSystem:
             cursor.close()
     
     def logout(self):
-        """Logout current user"""
+        """
+        Clear the current user session.
+
+        Resets the current_user and current_role instance variables to None,
+        effectively ending the user's authenticated session. Displays a logout message.
+        """
         print(f"\nGoodbye {self.current_user['username']}!")
         self.current_user = None
         self.current_role = None
     
     def admin_dashboard(self):
-        """Admin role dashboard"""
+        """
+        Display and handle the administration dashboard menu.
+
+        Presents a comprehensive menu system for administrative operations including
+        user creation/management, class and subject management, attendance tracking,
+        timetable creation, and various reporting and maintenance functions.
+        Processes user input in a continuous loop until the user chooses to logout.
+
+        Menu Options:
+            1-4: User creation (Teacher, Class, Subject, Student)
+            5-8: Attendance and timetable management
+            9-16: Viewing and management functions
+            17-22: Advanced admin functions (status management, assignments, etc.)
+            23-26: Special user creation and logout
+
+        Note:
+            All operations require appropriate database permissions and may involve
+            transaction-based updates for data integrity.
+        """
         while True:
             print("\n" + "="*50)
             print("            ADMIN DASHBOARD")
@@ -1658,7 +1910,31 @@ class SchoolManagementSystem:
             cursor.close()
     
     def teacher_dashboard(self):
-        """Teacher role dashboard"""
+        """
+        Display and handle the teacher dashboard menu.
+
+        Presents a menu-driven interface for teacher operations including student
+        attendance management, timetable viewing, profile access, and credential
+        updates. Some options may be restricted based on teacher privileges
+        configured by administrators. Runs in a continuous loop until logout.
+
+        Menu Options:
+            1. Mark Student Attendance - For assigned classes only
+            2. View My Timetable - Shows assigned lectures
+            3. View My Attendance - Personal attendance history
+            4. View My Students - Students in assigned classes
+            5. View My Profile - Personal information and privileges
+            6. Change Username & Password - Credential management
+            7. Manage Student Status - Suspension/unsuspension (privileged)
+            8. View My Assigned Classes - Overview of assignments
+            9. View Student Attendance History - For assigned students
+            10. Edit Student Attendance - Privilege-dependent
+            11. Logout
+
+        Note:
+            Teacher access is restricted to assigned classes and subjects.
+            Privilege checks are performed for sensitive operations.
+        """
         while True:
             print("\n" + "="*50)
             print("            TEACHER DASHBOARD")
@@ -1994,7 +2270,27 @@ class SchoolManagementSystem:
             cursor.close()
     
     def student_dashboard(self):
-        """Student role dashboard"""
+        """
+        Display and handle the student dashboard menu.
+
+        Presents a menu interface for student-specific functions including personal
+        timetable viewing, attendance tracking, subject information, profile access,
+        and credential management. Students have read-only access to most data.
+        Runs in a continuous loop until logout is selected.
+
+        Menu Options:
+            1. View My Timetable - Class schedule
+            2. View My Attendance - Current attendance summary
+            3. View My Subjects - Enrolled subjects with teachers
+            4. View My Profile - Personal information
+            5. Change Username & Password - Account credentials
+            6. View Attendance History - Detailed attendance records
+            7. Logout
+
+        Note:
+            All data access is filtered to the logged-in student's records only.
+            Credential changes are handled securely with confirmation.
+        """
         while True:
             print("\n" + "="*50)
             print("            STUDENT DASHBOARD")
@@ -4653,7 +4949,25 @@ class SchoolManagementSystem:
             cursor.close()
 
     def academic_coordinator_dashboard(self):
-        """Academic Coordinator role dashboard"""
+        """
+        Display and handle the academic coordinator dashboard.
+
+        Provides menu options for academic planning and curriculum management
+        including viewing subjects, teacher assignments, timetables, and
+        academic performance analytics. Supports curriculum oversight and
+        academic coordination functions. Runs in a loop until logout.
+
+        Menu Options:
+            1. View All Subjects - Curriculum overview
+            2. View Teacher Assignments - Assignment tracking
+            3. View Timetables - Schedule management
+            4. View Academic Performance - Analytics (under development)
+            5. Logout
+
+        Note:
+            Focused on academic administration and curriculum development.
+            Some features may be under development or require additional modules.
+        """
         while True:
             print("\n" + "="*50)
             print("      ACADEMIC COORDINATOR DASHBOARD")
@@ -4682,7 +4996,23 @@ class SchoolManagementSystem:
                 print("Invalid choice! Please try again.")
 
     def admission_department_dashboard(self):
-        """Admission Department role dashboard"""
+        """
+        Display and handle the admission department dashboard.
+
+        Provides menu options for student admissions and enrollment management
+        including viewing students, class capacities, and admission statistics.
+        Supports enrollment tracking and capacity planning. Runs in a loop until logout.
+
+        Menu Options:
+            1. View All Students - Enrollment overview
+            2. View Class Capacities - Capacity management
+            3. View Admission Statistics - Enrollment stats
+            4. Logout
+
+        Note:
+            Focused on student admissions and enrollment tracking.
+            Provides data for admission planning and capacity management.
+        """
         while True:
             print("\n" + "="*50)
             print("       ADMISSION DEPARTMENT DASHBOARD")
@@ -4891,7 +5221,23 @@ class SchoolManagementSystem:
             cursor.close()
     
     def principal_dashboard(self):
-        """Principal role dashboard - Read-only access to all data"""
+        """
+        Display and handle the principal dashboard menu with read-only access.
+
+        Provides comprehensive read-only access to all school data for oversight
+        and reporting purposes. Principals can view student/teacher information,
+        attendance records, timetables, assignments, and status summaries without
+        modification capabilities. Operates in a loop until logout.
+
+        Menu Options:
+            1-4: View all users, teachers, students, classes
+            5-9: View attendance records, timetables, assignments, status summaries
+            10. Logout
+
+        Note:
+            This role provides supervisory access without data modification rights.
+            All data is presented in summary and detail formats for administrative review.
+        """
         while True:
             print("\n" + "="*50)
             print("            PRINCIPAL DASHBOARD")
@@ -4945,7 +5291,34 @@ class SchoolManagementSystem:
         # Curriculum management, academic planning
     
     def run(self):
-        """Main program loop"""
+        """
+        Main application entry point and program loop.
+
+        Displays the welcome message and manages the primary application workflow,
+        including user authentication, role-based dashboard routing, and graceful
+        exit handling. The application runs in a continuous loop until explicitly
+        terminated by the user.
+
+        Program Flow:
+            1. Display system welcome and role information
+            2. Present login/exit options when user is not authenticated
+            3. Route authenticated users to role-specific dashboards
+            4. Handle logout events and return to authentication loop
+            5. Ensure proper database connection cleanup on exit
+
+        Supported Roles:
+            - admin: Full administrative access
+            - teacher: Teaching and student management
+            - student: Personal profile and attendance viewing
+            - principal: Read-only access to all school data
+            - academic_coordinator: Curriculum and subject management
+            - admission_department: Student enrollment tracking
+
+        Note:
+            The application uses a state-based loop structure where authentication
+            state determines available options. All database operations are properly
+            wrapped with error handling and transaction management.
+        """
         print("="*60)
         print("      SCHOOL MANAGEMENT SYSTEM")
         print("="*60)
@@ -5258,7 +5631,20 @@ class SchoolManagementSystem:
             cursor.close()
 
 def main():
-    """Main function"""
+    """
+    Application entry point and exception handler.
+
+    Instantiates the SchoolManagementSystem class and initiates the main program loop.
+    Provides top-level exception handling for graceful error recovery and user feedback.
+
+    Exception Handling:
+        - KeyboardInterrupt: Handles user-initiated program interruption
+        - Exception: Catches unexpected errors and displays diagnostic information
+
+    Note:
+        Ensures proper cleanup and user notification for all exit scenarios.
+        MySQL configuration issues are reported with helpful guidance.
+    """
     try:
         system = SchoolManagementSystem()
         system.run()
