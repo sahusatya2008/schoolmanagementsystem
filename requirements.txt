@@ -1,10 +1,1 @@
-pymysql
-
-# Standard Library modules (no installation required):
-datetime
-getpass
-sys
-hashlib
-os
-logging
-typing
+PyMySQL==1.0.2
